@@ -1,0 +1,333 @@
+diff -crB FPGA-Asteroids/CPU/Design/display640x480.vh CPU/Design/display640x480.vh
+*** FPGA-Asteroids/CPU/Design/display640x480.vh	2018-12-01 14:37:38.111316795 -0500
+--- CPU/Design/display640x480.vh	2018-12-01 15:13:42.383053000 -0500
+***************
+*** 21,23 ****
+--- 21,26 ----
+  
+  `define hVisible (`WholeLine  - `hFrontPorch - `hSyncPulse - `hBackPorch)
+  `define vVisible (`WholeFrame - `vFrontPorch - `vSyncPulse - `vBackPorch)
++ 
++ `define screenSize (`hVisible * `vVisible)
++ 
+diff -crB FPGA-Asteroids/CPU/Design/dual_ram_module.sv CPU/Design/dual_ram_module.sv
+*** FPGA-Asteroids/CPU/Design/dual_ram_module.sv	2018-12-01 14:41:36.633619088 -0500
+--- CPU/Design/dual_ram_module.sv	2018-12-01 14:41:31.445569000 -0500
+***************
+*** 18,26 ****
+     input wire [$clog2(Nloc)-1 : 0] addr,     // Address for specifying memory location
+                                               //   num of bits in addr is ceiling(log2(number of locations))
+     input wire [Dbits-1 : 0] din,             // Data for writing into memory (if wr==1)
+!    output wire [Dbits-1 : 0] dout,           // Data read from memory (asynchronously, i.e., continuously)
+     input wire [$clog2(Nloc)-1 : 0] addr2,
+!    output wire [Dbits-1 : 0] dout2
+     );
+  
+     logic [Dbits-1 : 0] mem [Nloc-1 : 0];        // The actual storage where data resides
+--- 18,26 ----
+     input wire [$clog2(Nloc)-1 : 0] addr,     // Address for specifying memory location
+                                               //   num of bits in addr is ceiling(log2(number of locations))
+     input wire [Dbits-1 : 0] din,             // Data for writing into memory (if wr==1)
+!    output logic [Dbits-1 : 0] dout,          // Data read from memory (synchronously, not continuously)
+     input wire [$clog2(Nloc)-1 : 0] addr2,
+!    output logic [Dbits-1 : 0] dout2
+     );
+  
+     logic [Dbits-1 : 0] mem [Nloc-1 : 0];        // The actual storage where data resides
+***************
+*** 30,36 ****
+         if(wr)
+             mem[addr] <= din;
+  
+!    assign dout = mem[addr];                     // Memory read: read continuously, no clock involved
+!    assign dout2 = mem[addr2];
+  
+  endmodule
+--- 30,38 ----
+         if(wr)
+             mem[addr] <= din;
+  
+!    always_ff @(posedge clock) begin             // Memory read: read synchronously to use BRAM
+!        dout <= mem[addr];                  
+!        dout2 <= mem[addr2];
+!    end
+  
+  endmodule
+diff -crB FPGA-Asteroids/CPU/Design/memIO.sv CPU/Design/memIO.sv
+*** FPGA-Asteroids/CPU/Design/memIO.sv	2018-11-09 12:37:10.045265000 -0500
+--- CPU/Design/memIO.sv	2018-12-01 14:51:02.850939000 -0500
+***************
+*** 1,5 ****
+--- 1,6 ----
+  `timescale 1ns / 1ps
+  `default_nettype none
++ `include "display640x480.vh"
+  
+  module memIO #(
+      parameter numChars = 4,
+***************
+*** 8,52 ****
+      parameter dmem_init = "...  .mem",        // Name of file with initial data values
+      parameter smem_init = "...  .mem"         // Name of file with initial screen values
+  )(
+!     input wire clock,
+      input wire cpu_wr,
+      input wire [Dbits-1:0] cpu_addr,
+      input wire [Dbits-1:0] cpu_writedata,
+!     input wire [$clog2(30*40)-1:0] vga_addr,
+      input wire [8:0] accelX, accelY,
+      input wire [Dbits-1:0] keyb_char,
+      output logic [Dbits-1:0] cpu_readdata,         // will become wires because of always_comb
+      output logic [15:0] lights = 0,
+      output logic unsigned [Dbits-1:0] period = 0,
+      output wire [$clog2(numChars)-1:0] vga_readdata
+      );
+      
+!     wire lights_wr = cpu_wr && (cpu_addr[17:16] == 2'b11) && (cpu_addr[3:2] == 2'b11);
+!     wire sound_wr = cpu_wr && (cpu_addr[17:16] == 2'b11) && (cpu_addr[3:2] == 2'b10);
+!     wire smem_wr = cpu_wr && (cpu_addr[17:16] == 2'b10);
+!     wire dmem_wr = cpu_wr && (cpu_addr[17:16] == 2'b01);
+      wire [31:0] accel_val = {7'b0, accelX, 7'b0, accelY};
+      wire [$clog2(numChars)-1:0] smem_readdata;
+      wire [Dbits-1:0] dmem_readdata;
+      
+!     ram_module #(Nloc, Dbits, dmem_init) mem(clock, dmem_wr, cpu_addr[Dbits-1:2], cpu_writedata, dmem_readdata);
+!     dual_ram_module #(30*40, $clog2(numChars), smem_init) smem(clock, smem_wr, cpu_addr[Dbits-1:2], cpu_writedata, smem_readdata, vga_addr, vga_readdata);
+      
+      logic [15:0] LED = 0;
+      logic unsigned [31:0] sound = 0;
+      
+!     always_ff @(posedge clock) begin
+          if (lights_wr)
+              lights <= cpu_writedata;
+          if (sound_wr)
+              period <= cpu_writedata;
+      end
+      
+      always_comb begin
+!         if (cpu_addr[17:16] == 2'b01)
+              cpu_readdata = dmem_readdata;
+          else if (cpu_addr[17:16] == 2'b10)
+!             cpu_readdata = smem_readdata;
+          else if (cpu_addr[17:16] == 2'b11)
+              if (cpu_addr[3:2] == 2'b00)
+                  cpu_readdata = keyb_char;
+--- 9,61 ----
+      parameter dmem_init = "...  .mem",        // Name of file with initial data values
+      parameter smem_init = "...  .mem"         // Name of file with initial screen values
+  )(
+!     input wire cpu_clock,
+      input wire cpu_wr,
+      input wire [Dbits-1:0] cpu_addr,
+      input wire [Dbits-1:0] cpu_writedata,
+!     input wire [$clog2(`screenSize)-1:0] vga_addr,
+      input wire [8:0] accelX, accelY,
+      input wire [Dbits-1:0] keyb_char,
++     input wire vsync,
+      output logic [Dbits-1:0] cpu_readdata,         // will become wires because of always_comb
+      output logic [15:0] lights = 0,
+      output logic unsigned [Dbits-1:0] period = 0,
+      output wire [$clog2(numChars)-1:0] vga_readdata
+      );
+      
+!     wire lights_wr = cpu_wr && (cpu_addr[17:16] == 2'b11) && (cpu_addr[3:2] == 2'b11) && (cpu_addr[29] == 1'b0);
+!     wire sound_wr = cpu_wr && (cpu_addr[17:16] == 2'b11) && (cpu_addr[3:2] == 2'b10) && (cpu_addr[29] == 1'b0);
+!     wire smem_wr = cpu_wr && (cpu_addr[29] == 1'b1);
+!     wire dmem_wr = cpu_wr && (cpu_addr[17:16] == 2'b01) && (cpu_addr[29] == 1'b0);
+      wire [31:0] accel_val = {7'b0, accelX, 7'b0, accelY};
+      wire [$clog2(numChars)-1:0] smem_readdata;
+      wire [Dbits-1:0] dmem_readdata;
+      
+!     ram_module #(Nloc, Dbits, dmem_init) mem(cpu_clock, dmem_wr, cpu_addr[Dbits-1:2], cpu_writedata, dmem_readdata);
+!     dual_ram_module #(`screenSize, $clog2(numChars), smem_init) smem(cpu_clock, smem_wr, cpu_addr[Dbits-1:2], cpu_writedata, smem_readdata, vga_addr, vga_readdata);
+      
+      logic [15:0] LED = 0;
+      logic unsigned [31:0] sound = 0;
++     logic [Dbits-1:0] global_counter = 0;
+      
+!     always_ff @(posedge cpu_clock) begin
+          if (lights_wr)
+              lights <= cpu_writedata;
+          if (sound_wr)
+              period <= cpu_writedata;
++         global_counter += 1;
+      end
+      
+      always_comb begin
+!         if (cpu_addr[29] == 1'b1) // (cpu_addr[17:16] == 2'b10)
+!             cpu_readdata = smem_readdata;
+!         else if (cpu_addr[17:16] == 2'b01)
+              cpu_readdata = dmem_readdata;
+          else if (cpu_addr[17:16] == 2'b10)
+!             if (cpu_addr[2] == 1'b0)
+!                 cpu_readdata = `vSyncPolarity ^ vsync;
+!             else
+!                 cpu_readdata = global_counter;
+          else if (cpu_addr[17:16] == 2'b11)
+              if (cpu_addr[3:2] == 2'b00)
+                  cpu_readdata = keyb_char;
+diff -crB FPGA-Asteroids/CPU/Design/top.sv CPU/Design/top.sv
+*** FPGA-Asteroids/CPU/Design/top.sv	2018-12-01 14:57:33.174550631 -0500
+--- CPU/Design/top.sv	2018-12-01 14:57:43.526646000 -0500
+***************
+*** 1,17 ****
+  `timescale 1ns / 1ps
+  `default_nettype none
+  
+  module top #(
+!     //parameter imem_init="imem_screentest.mem",        // use this line for synthesis/board deployment
+!     parameter imem_init="imem_screentest_nopause.mem",  // use this line for simulation/testing
+!     parameter dmem_init="dmem_screentest.mem",          // file to initialize data memory
+!     parameter smem_init="smem_screentest.mem",          // file to initialize screen memory
+!     parameter bmem_init="bmem_screentest.mem"           // file to initialize bitmap memory
+  )(
+      input wire clk, reset,
+      input wire ps2_data,
+      input wire ps2_clk,
+      input wire aclMISO,
+      output wire aclSCK,
+      output wire aclMOSI,
+      output wire aclSS,
+--- 1,18 ----
+  `timescale 1ns / 1ps
+  `default_nettype none
++ `include "display640x480.vh"
+  
+  module top #(
+!     parameter imem_init="asteroids_imem.mem", // file to initialize instruction memory
+!     parameter dmem_init="asteroids_dmem.mem", // file to initialize data memory
+!     parameter smem_init="asteroids_smem.mem", // file to initialize screen memory
+!     parameter bmem_init="asteroids_bmem.mem"  // file to initialize bitmap memory
+  )(
+      input wire clk, reset,
+      input wire ps2_data,
+      input wire ps2_clk,
+      input wire aclMISO,
++     input wire X[4],
+      output wire aclSCK,
+      output wire aclMOSI,
+      output wire aclSS,
+***************
+*** 27,46 ****
+     wire mem_wr;
+     wire clk100, clk50, clk25, clk12;
+     
+!    wire [10:0] smem_addr;
+     wire [11:0] bmem_color;
+     wire unsigned [31:0] period;
+     wire [1:0] charcode;
+     wire [31:0] keyb_char;
+!    wire enable = 1'b1;      // we will use this later for debugging
+     assign audEn = 1'b1;
+  
+     // Uncomment *only* one of the following two lines:
+     //    when synthesizing, use the first line
+     //    when simulating, get rid of the clock divider, and use the second line
+     //
+!    //clockdivider_Nexys4 clkdv(clk, clk100, clk50, clk25, clk12);   // use this line for synthesis/board deployment
+!    assign clk100=clk; assign clk50=clk; assign clk25=clk; assign clk12=clk;  // use this line for simulation/testing
+  
+     // For synthesis:  use an appropriate clock frequency(ies) below
+     //   clk100 will work for hardly anyone
+--- 28,47 ----
+     wire mem_wr;
+     wire clk100, clk50, clk25, clk12;
+     
+!    wire [$clog2(`screenSize)-1:0] smem_addr;
+     wire [11:0] bmem_color;
+     wire unsigned [31:0] period;
+     wire [1:0] charcode;
+     wire [31:0] keyb_char;
+!    wire enable = 1'b1;			// we will use this later for debugging
+     assign audEn = 1'b1;
+  
+     // Uncomment *only* one of the following two lines:
+     //    when synthesizing, use the first line
+     //    when simulating, get rid of the clock divider, and use the second line
+     //
+!    clockdivider_Nexys4 clkdv(clk, clk100, clk50, clk25, clk12);   // use this line for synthesis/board deployment
+!    //assign clk100=clk; assign clk50=clk; assign clk25=clk; assign clk12=clk;  // use this line for simulation/testing
+  
+     // For synthesis:  use an appropriate clock frequency(ies) below
+     //   clk100 will work for hardly anyone
+***************
+*** 50,70 ****
+     // Important:  Use the same clock frequency for the MIPS and the memIO modules.
+     // The I/O devices, however, should keep the 100 MHz clock.
+     // For example:
+! 
+!    mips mips(clk12, reset, enable, pc, instr, mem_wr, mem_addr, mem_writedata, mem_readdata);
+!    rom_module #(.Nloc(256), .Dbits(32), .initfile(imem_init)) imem(pc[31:2], instr);
+!    memIO #(.Nloc(64), .Dbits(32), .numChars(4), .dmem_init(dmem_init), .smem_init(smem_init)) memIO
+!           (clk12, mem_wr, mem_addr, mem_writedata, smem_addr, accelX, accelY, keyb_char, mem_readdata, LED, period, charcode);
+  
+     // I/O devices
+     //
+     // Note: All I/O devices were developed assuming a 100 MHz clock.
+     //   Therefore, the clock sent to them must be clk100, not any of the
+     //   slower clocks generated by the clock divider.
+! 
+!    vgadisplaydriver #(.numChars(4), .initfile(bmem_init)) display
+                       (clk100, charcode, smem_addr, bmem_color, red, green, blue, hsync, vsync);
+! 
+     // Uncomment the following to instantiate these other I/O devices.
+     //   You will have to declare all the wires that connect to them.
+     //
+--- 51,76 ----
+     // Important:  Use the same clock frequency for the MIPS and the memIO modules.
+     // The I/O devices, however, should keep the 100 MHz clock.
+     // For example:
+!    
+!    wire cpu_clock = (X[3]) ? clk100
+!                   : (X[2]) ? clk50
+!                   : (X[1]) ? clk25
+!                   : 1'b0;
+! 
+!    mips mips(cpu_clock, reset | X[0], enable, pc, instr, mem_wr, mem_addr, mem_writedata, mem_readdata);
+!    rom_module #(.Nloc(1280), .Dbits(32), .initfile(imem_init)) imem(pc[31:2], instr);
+!    memIO #(.Nloc(872), .Dbits(32), .numChars(4), .dmem_init(dmem_init), .smem_init(smem_init)) memIO
+!           (cpu_clock, mem_wr, mem_addr, mem_writedata, smem_addr, accelX, accelY, keyb_char, vsync, mem_readdata, LED, period, charcode);
+  
+     // I/O devices
+     //
+     // Note: All I/O devices were developed assuming a 100 MHz clock.
+     //   Therefore, the clock sent to them must be clk100, not any of the
+     //   slower clocks generated by the clock divider.
+!    
+!    vgadisplaydriver #(.numChars(4), .Dbits($clog2(`screenSize)), .initfile(bmem_init)) display
+                       (clk100, charcode, smem_addr, bmem_color, red, green, blue, hsync, vsync);
+!                      
+     // Uncomment the following to instantiate these other I/O devices.
+     //   You will have to declare all the wires that connect to them.
+     //
+diff -crB FPGA-Asteroids/CPU/Design/vgadisplaydriver.sv CPU/Design/vgadisplaydriver.sv
+*** FPGA-Asteroids/CPU/Design/vgadisplaydriver.sv	2018-12-01 14:55:30.693420046 -0500
+--- CPU/Design/vgadisplaydriver.sv	2018-12-01 14:43:23.082631000 -0500
+***************
+*** 21,35 ****
+  
+     vgatimer myvgatimer(clk, hsync, vsync, activevideo, x, y);
+     
+!    wire [5:0] row = y[`ybits-1:4]; // size ceil log_2(800 / 16)
+!    wire [5:0] col = x[`xbits-1:4]; // size ceil log_2(525 / 16)
+!    assign smem_addr = (row << 5) + (row << 3) + col; // 40*row + col
+! 
+!    wire [3:0] xoffset = x[3:0];
+!    wire [3:0] yoffset = y[3:0];
+!    wire [$clog2(16*16*numChars)-1:0] bmem_addr = {charcode, yoffset, xoffset};
+     
+!    rom_module #(16*16*numChars, 12, initfile) mem (bmem_addr, bmem_color);
+     
+     assign red[3:0]   = (activevideo == 1) ? bmem_color[11:8] : 4'b0;
+     assign green[3:0] = (activevideo == 1) ? bmem_color[7:4]  : 4'b0;
+--- 21,30 ----
+  
+     vgatimer myvgatimer(clk, hsync, vsync, activevideo, x, y);
+     
+!    assign smem_addr = (y << 9) + (y << 7) + x; // 640*y + x
+!    wire [$clog2(numChars)-1:0] bmem_addr = charcode;
+     
+!    rom_module #(numChars, 12, initfile) mem (bmem_addr, bmem_color); 
+     
+     assign red[3:0]   = (activevideo == 1) ? bmem_color[11:8] : 4'b0;
+     assign green[3:0] = (activevideo == 1) ? bmem_color[7:4]  : 4'b0;
