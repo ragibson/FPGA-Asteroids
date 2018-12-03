@@ -1,5 +1,6 @@
 # Uses 3 bits from the global cycle count to return
 # nonzero values from -96 to 96, saves $ra, uses $t0
+# (in fp16_t, this corresponds to -1.5 to 1.5)
 rng:
     lw   $v0, counter_addr($0)
     andi $t0, $v0, 0x1

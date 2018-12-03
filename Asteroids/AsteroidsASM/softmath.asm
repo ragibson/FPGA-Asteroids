@@ -1,3 +1,13 @@
+# Implements fixed-point arithmetic with 6 bits for the decimal part and 10
+# bits for the integer part (referred to as fp16_t).
+#
+# This effectively lets the game perform calculations on each pixel at the
+# level of 64x64 subpixels.
+#
+# Integer and fixed-point multiplication/division are implemented in software.
+#
+# A lookup table for cosine is used to compute sine and cosine for fp16_t.
+
 .data TABLE_START
     # lookup table for cos(d), 0 <= d < 360 (values in fp16_t)
     fpcos_table:

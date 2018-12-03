@@ -47,7 +47,7 @@ int32_t sound_period = 0;
 int32_t sound_timeout = 0;
 
 // uses 3 bits of randomness to return nonzero -96 to 96
-// (in fp16_t, so this corresponds to -1.5 to 1.5)
+// (in fp16_t, this corresponds to -1.5 to 1.5)
 int32_t rng() {
   int32_t ret = 0;
   while (ret == 0) {
@@ -65,7 +65,7 @@ void swap(fp16_t *a, fp16_t *b) {
 }
 
 // draws (x1, y1) -> (x2, y2) on the framebuffer with color c
-// returns whether or not it drew over color check_collision
+// returns whether or not it drew over color check_collision (if not BLACK)
 int32_t draw_line(fp16_t x1, fp16_t y1, fp16_t x2, fp16_t y2,
                   enum color check_collision, enum color c) {
   char r = palette[c].r;
@@ -181,7 +181,7 @@ void draw_flame(fp16_t x, fp16_t y, fp16_t degrees, enum color c) {
   draw_line(x + bx, y + by, x + cx, y + cy, 0, c);
 }
 
-// draws shots that have positive timeout
+// draws shots that have positive timeout with color c
 void draw_shots(enum color c) {
   for (int32_t i = 0; i < MAX_SHOTS; i++) {
     if (shots[i].timeout > 0) {
@@ -195,7 +195,7 @@ void draw_shots(enum color c) {
   }
 }
 
-// draws asteroids that have positive size
+// draws asteroids that have positive size with color c
 void draw_asteroids(enum color c) {
   // (-10, 10) -- (10, 10) -- (10, -10) -- (-10, -10)
 
