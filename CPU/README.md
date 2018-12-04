@@ -25,7 +25,7 @@ Block RAMs.
 Buttons/switches for resetting the game and switching the CPU clock rate are
 optional, but recommended. The Asteroids game uses one button and four switches.
 
-See the Asteroids README for more information.
+See the [Asteroids README](../Asteroids/README.md) for more information.
 
 <a name = "InstructionSet"></a>
 ## Instruction Set
@@ -73,4 +73,5 @@ The Asteroids game requires a few tweaks to the CPU. Namely, it
   * Tweaks the memory map (adds in vsync signal, global cycle count, and moves
     screen memory)
 
-See the Asteroids README for more information.
+See the [Asteroids README](../Asteroids/README.md) for more information.
+

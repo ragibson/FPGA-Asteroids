@@ -14,7 +14,7 @@ In short, the CPU is a 32-bit single cycle processor and supports
   * LED lights output
   * 7-segment display output
   
-More information can be found in the CPU README.
+More information can be found in the [CPU README](CPU/README.md).
 
 ## Asteroids
 
@@ -24,4 +24,4 @@ on-the-fly underclocking to 25 or 50 MHz to demonstrate VBLANK).
 A prototype written in C that writes directly to the Linux framebuffer is also
 available.
 
-More information can be found in the Asteroids README.
+More information can be found in the [Asteroids README](Asteroids/README.md).
