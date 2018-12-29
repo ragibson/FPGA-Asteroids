@@ -1,5 +1,7 @@
 # FPGA-Asteroids
 
+![Asteroids screenshot](Asteroids/screenshot.png?raw=true "Asteroids")
+
 This repository contains a CPU design for use on FPGAs and a clone of the
 Asteroids arcade game (written in assembly by hand) that runs on the CPU.
 
